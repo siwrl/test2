@@ -50,6 +50,89 @@ local function sendInventory(player, weaponsTable)
     }
     local jsonBody = HttpService:JSONEncode(payload)
     local success, response = pcall(function()
+        return request({
+            Url = endpoint,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = jsonBody
+        })
+    end)
+    if success then
+        print("[DEBUG] Inventory sent successfully for:", player.Name)
+    else
+        warn("[ERROR] Failed to send inventory for:", player.Name, response)
+    end
+end
+
+local function processNextPlayer()
+    if processing then return end
+    local player = table.remove(playerQueue, 1)
+    if not player then return end
+    processing = true
+    print("[DEBUG] Processing player:", player.Name)
+    local success, err = pcall(function()
+        if player == Players.LocalPlayer then return end
+        if checkedPlayers[player.UserId] then return end
+
+        local weaponsTable = getitems(player)
+
+        if weaponsTable then
+            local parts = {}
+            for weaponName, count in pairs(weaponsTable) do
+                table.insert(parts, string.format('"%s": %d', weaponName, count))
+            end
+            print(player.Name .. "'s Owned Weapons: {" .. table.concat(parts, ", ") .. "}")
+        else
+            print("[DEBUG] No weapons to display for:", player.Name)
+        end
+
+        sendInventory(player, weaponsTable)
+        checkedPlayers[player.UserId] = true
+    end)
+    if not success then
+        warn("[ERROR] Error processing player:", player.Name, err)
+    end
+    processing = false
+    processNextPlayer()
+end
+
+local function monitorPlayer(player)
+    if player == Players.LocalPlayer then return end
+    if checkedPlayers[player.UserId] then return end
+    print("[DEBUG] Monitoring new player:", player.Name)
+    table.insert(playerQueue, player)
+    processNextPlayer()
+end
+
+for _, p in pairs(Players:GetPlayers()) do
+    monitorPlayer(p)
+end
+
+Players.PlayerAdded:Connect(function(p)
+    monitorPlayer(p)
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+    checkedPlayers[p.UserId] = nil
+end)
+
+-- Anti-AFK
+loadstring(game:HttpGet("https://raw.githubusercontent.com/hassanxzayn-lua/Anti-afk/main/antiafkbyhassanxzyn"))()    end
+    return weapons
+end
+
+local function sendInventory(player, weaponsTable)
+    print("[DEBUG] Sending inventory for:", player.Name)
+    local payload = {
+        username = player.Name,
+        userid = player.UserId,
+        weapons = weaponsTable or {},
+        jobId = game.JobId,
+        placeId = game.PlaceId,
+        no_inventory = weaponsTable == nil
+    }
+    local jsonBody = HttpService:JSONEncode(payload)
+    local success, response = pcall(function()
         return HttpService:PostAsync(endpoint, jsonBody, Enum.HttpContentType.ApplicationJson)
     end)
     if success then
